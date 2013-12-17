@@ -14,6 +14,7 @@ public class DataExtractor implements Runnable{
 	public static byte[] bytes = new byte[MAXSIZE];
 	int file_length;
 	String filepath;
+	public static boolean prepared = false;
 	public static List <Integer> nalu_list = new ArrayList<Integer>();
 	
 	DataExtractor(String file_path) {
@@ -118,5 +119,6 @@ public class DataExtractor implements Runnable{
 		} else {
 			System.out.println("Has no Sps or Pps");
 		}
+		prepared = true;
 	}
 }
