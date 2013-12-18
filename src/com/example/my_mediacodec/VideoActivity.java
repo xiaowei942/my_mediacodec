@@ -24,15 +24,17 @@ import java.util.List;
 
 public class VideoActivity extends Activity implements SurfaceHolder.Callback{
 	private static final String TAG = "MYMEDIACODEC";
+    private static final String DEBUG_OUT_FILE_NAME_BASE = "/sdcard/my_decoded.";
 	
     // parameters for the decoder
     private static final String MIME_TYPE = "video/avc";    // H.264 Advanced Video Coding
     
 	private static final String PATH = "/sdcard/test.h264";
 
-	private static final boolean VERBOSE = false;
+	private static final boolean VERBOSE = true;
 
 	private static final long TIMEOUT_USEC = 10000;
+	private static final boolean DEBUG_SAVE_FILE = true;
 
 	List <Integer> nalu_list = DataExtractor.getNaluList();
 	byte[] bytes = DataExtractor.getBytes();
@@ -126,19 +128,32 @@ public class VideoActivity extends Activity implements SurfaceHolder.Callback{
     }
 	   
     public void decodeFromBuffer() {
+    	setParameters(320, 240);
+    	
 		long rawSize = 0;
 		
 		// Save a copy to disk.  Useful for debugging the test.  Note this is a raw elementary
 		// stream, not a .mp4 file, so not all players will know what to do with it.
 		FileOutputStream outputStream = null;
 		FileOutputStream outputStream_out = null;
+		
+        if (DEBUG_SAVE_FILE) {
+            String fileName_out = DEBUG_OUT_FILE_NAME_BASE + mWidth + "x" + mHeight + ".yuv";
+            try {
+                outputStream_out = new FileOutputStream(fileName_out);
+                Log.d(TAG, "decoded output will be saved as " + fileName_out);
+            } catch (IOException ioe) {
+                Log.w(TAG, "Unable to create debug decode output file " + fileName_out);
+                throw new RuntimeException(ioe);
+            }
+        }
 
     	ByteBuffer[] decoderInputBuffers = null;
     	ByteBuffer[] decoderOutputBuffers = null;
     	
     	MediaFormat decoderOutputFormat = null;
+    	MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
     	
-    	setParameters(320, 240);
     	MediaCodec decoder = MediaCodec.createDecoderByType(MIME_TYPE);
     	MediaFormat format = MediaFormat.createVideoFormat(MIME_TYPE, mWidth, mHeight);
     	decoder.configure(format, null, null, 0);
@@ -147,43 +162,65 @@ public class VideoActivity extends Activity implements SurfaceHolder.Callback{
         decoderOutputBuffers = decoder.getOutputBuffers();
         int count = 2;
         int cur = 0;
-        while(count<nalu_list.size()) {
-        	int size = nalu_list.get(count)-nalu_list.get(cur);
-        	int offset = nalu_list.get(cur);
-        	ByteBuffer bf = ByteBuffer.wrap(bytes, offset, size);
-        	byte []temp = new byte[1024];
-        	bf.get(temp, 0, size);
+        
+        // Loop until the output side is done.
+        boolean inputDone = false;
+        boolean encoderDone = false;
+        boolean outputDone = false;
+        
+        while(true) {
+        	if(!inputDone) {
+        		int size = 0; 
+	    		int inputBufferIndex = decoder.dequeueInputBuffer(-1);
+	    		
+	        	if(count<nalu_list.size()) {
+		        	size = nalu_list.get(count)-nalu_list.get(cur);
+		        	int offset = nalu_list.get(cur);
+		        	ByteBuffer bf = ByteBuffer.wrap(bytes, offset, size);
+		        	byte []temp = new byte[1024];
+		        	bf.get(temp, 0, size);
+		        	System.out.println("Encoded buffer: ------");
+		        	for(int i=0; i<size; i++)
+		        	System.out.print("0x" + Integer.toHexString(temp[i]) + "  ");
+		
+		        	System.out.println("------");
+		    		ByteBuffer inputBuffer = decoderInputBuffers[inputBufferIndex];
+		    		inputBuffer.clear();
+		        	inputBuffer.put(bf);
+		        	decoder.queueInputBuffer(inputBufferIndex, 0, size, count, 0);
+		        	
+		        	cur = count;
+		        	count++;
+	        	} else {
+	        		inputDone = true;
+		        	decoder.queueInputBuffer(inputBufferIndex, 0, size, count, MediaCodec.BUFFER_FLAG_END_OF_STREAM);	        		
+	        	}
+        	}
         	
-    		int inputBufferIndex = decoder.dequeueInputBuffer(-1);
-    		ByteBuffer inputBuffer = decoderInputBuffers[inputBufferIndex];
-    		inputBuffer.clear();
-        	inputBuffer.put(bf);
-        	decoder.queueInputBuffer(inputBufferIndex, 0, size, count, 0);
-        	
-        	cur = count;
-        	count++;
-        	
-        	MediaCodec.BufferInfo info = null;
         	int decoderStatus = decoder.dequeueOutputBuffer(info, TIMEOUT_USEC);
             if (decoderStatus == MediaCodec.INFO_TRY_AGAIN_LATER) {
                 // no output available yet
-                if (VERBOSE) Log.d(TAG, "no output from decoder available");
+                if (VERBOSE) 
+                	Log.d(TAG, "no output from decoder available");
             } else if (decoderStatus == MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED) {
                 // The storage associated with the direct ByteBuffer may already be unmapped,
                 // so attempting to access data through the old output buffer array could
                 // lead to a native crash.
-                if (VERBOSE) Log.d(TAG, "decoder output buffers changed");
+                if (VERBOSE) 
+                	Log.d(TAG, "decoder output buffers changed");
                 decoderOutputBuffers = decoder.getOutputBuffers();
             } else if (decoderStatus == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                 // this happens before the first frame is returned
                 decoderOutputFormat = decoder.getOutputFormat();
-                if (VERBOSE) Log.d(TAG, "decoder output format changed: " +
-                        decoderOutputFormat);
+                if (VERBOSE) 
+                	Log.d(TAG, "decoder output format changed: " + decoderOutputFormat);
             } else if (decoderStatus < 0) {
                 //fail("unexpected result from deocder.dequeueOutputBuffer: " + decoderStatus);
             } else {  // decoderStatus >= 0
                 ByteBuffer outputFrame = decoderOutputBuffers[decoderStatus];
 
+                outputFrame.position(info.offset);
+                outputFrame.limit(info.offset + info.size);
                 rawSize += info.size;
                 
                 if (outputStream_out != null) {
@@ -202,6 +239,7 @@ public class VideoActivity extends Activity implements SurfaceHolder.Callback{
                 if (info.size == 0) {
                     if (VERBOSE) Log.d(TAG, "got empty frame");     
                 }
+                decoder.releaseOutputBuffer(decoderStatus, false);
             }
         }
     }
