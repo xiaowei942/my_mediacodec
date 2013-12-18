@@ -160,8 +160,8 @@ public class VideoActivity extends Activity implements SurfaceHolder.Callback{
         decoder.start();
         decoderInputBuffers = decoder.getInputBuffers();
         decoderOutputBuffers = decoder.getOutputBuffers();
-        int count = 2;
-        int cur = 0;
+        int count = 3;
+        int cur = 2;
         
         // Loop until the output side is done.
         boolean inputDone = false;
@@ -177,17 +177,26 @@ public class VideoActivity extends Activity implements SurfaceHolder.Callback{
 		        	size = nalu_list.get(count)-nalu_list.get(cur);
 		        	int offset = nalu_list.get(cur);
 		        	ByteBuffer bf = ByteBuffer.wrap(bytes, offset, size);
+		        	
+		        	bf.position(0);
+		        	bf.limit(size);
+		        	
 		        	byte []temp = new byte[1024];
-		        	bf.get(temp, 0, size);
-		        	System.out.println("Encoded buffer: ------");
-		        	for(int i=0; i<size; i++)
-		        	System.out.print("0x" + Integer.toHexString(temp[i]) + "  ");
-		
+		        	bf.get(temp, 0, size);		  
+		        	System.out.println("Encoded buffer: " + count);
 		        	System.out.println("------");
-		    		ByteBuffer inputBuffer = decoderInputBuffers[inputBufferIndex];
+		        	for(int i=0; i<size; i++)
+		        		System.out.print("0x" + Integer.toHexString(temp[i]) + "  ");
+		        	System.out.println("------");
+		    		
+		        	ByteBuffer inputBuffer = decoderInputBuffers[inputBufferIndex];
 		    		inputBuffer.clear();
 		        	inputBuffer.put(bf);
-		        	decoder.queueInputBuffer(inputBufferIndex, 0, size, count, 0);
+		        	if(count == 3) {
+			        	decoder.queueInputBuffer(inputBufferIndex, 0, size, count, 1);
+	        		} else {
+	        			decoder.queueInputBuffer(inputBufferIndex, 0, size, count, 0);
+	        		}
 		        	
 		        	cur = count;
 		        	count++;
