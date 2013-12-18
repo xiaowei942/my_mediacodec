@@ -9,7 +9,7 @@ import java.util.List;
 
 public class DataExtractor implements Runnable{
 	private static final boolean DEBUG = false;
-	private static final int MAXSIZE = 10*1024*1024;
+	private static final int MAXSIZE = 20*1024*1024;
 	private File file = null;
 	private FileInputStream ins = null;
 	public static byte[] bytes = new byte[MAXSIZE];
@@ -54,8 +54,8 @@ public class DataExtractor implements Runnable{
 		for(int i=0; i<file_length; i++) {
 			if(src[i] == 0 && src[i+1] == 0) {
 				if(src[i+2] == 1) {
-					nalu_list.add(i);
-					i+=2;
+					//nalu_list.add(i);
+					//i+=2;
 				} else if(src[i+2] == 0 && src[i+3] == 1) {
 					nalu_list.add(i);
 					i+=3;

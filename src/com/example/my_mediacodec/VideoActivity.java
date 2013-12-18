@@ -129,7 +129,7 @@ public class VideoActivity extends Activity implements SurfaceHolder.Callback{
     }
 	   
     public void decodeFromBuffer() {
-    	setParameters(320, 240);
+    	setParameters(704, 480);
     	
 		long rawSize = 0;
 		int decodedframes = 0;
@@ -230,7 +230,7 @@ public class VideoActivity extends Activity implements SurfaceHolder.Callback{
 			        	inputBuffer.put(bytes, offset, size);
 			        	if(count == 3) {
 				        	decoder.queueInputBuffer(inputBufferIndex, 0, size, count*1000, 0);
-				        	if (VERBOSE) Log.d(TAG, "passed " + size + " bytes to decoder" + " with flags - " + 0);
+				        	if (VERBOSE) Log.d(TAG, "passed " + size + " bytes to decoder" + " with flags - " + 1);
 		        		} else {
 		        			decoder.queueInputBuffer(inputBufferIndex, 0, size, count*1000, 0);
 				        	if (VERBOSE) Log.d(TAG, "passed " + size + " bytes to decoder" + " with flags - " + 0);
