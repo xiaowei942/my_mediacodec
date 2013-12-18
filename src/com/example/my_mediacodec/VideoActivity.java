@@ -227,7 +227,7 @@ public class VideoActivity extends Activity implements SurfaceHolder.Callback{
 			        	
 			        	ByteBuffer inputBuffer = decoderInputBuffers[inputBufferIndex];
 			    		inputBuffer.clear();
-			        	inputBuffer.put(bf);
+			        	inputBuffer.put(bytes, offset, size);
 			        	if(count == 3) {
 				        	decoder.queueInputBuffer(inputBufferIndex, 0, size, count*1000, 0);
 				        	if (VERBOSE) Log.d(TAG, "passed " + size + " bytes to decoder" + " with flags - " + 0);
