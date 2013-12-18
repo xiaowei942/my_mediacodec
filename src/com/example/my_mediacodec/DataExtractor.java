@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class DataExtractor implements Runnable{
+	private static final boolean DEBUG = false;
 	private static final int MAXSIZE = 10*1024*1024;
 	private File file = null;
 	private FileInputStream ins = null;
@@ -60,11 +61,13 @@ public class DataExtractor implements Runnable{
 					i+=3;
 				}
 			}
-		}
-
+		}		
+		nalu_list.add(file_length);
 		
-		for(int count = 0; count<nalu_list.size(); count++)
-			System.out.println("Count: " + count + "  Value: " + nalu_list.get(count).toString());
+		if(DEBUG) {
+			for(int count = 0; count<nalu_list.size(); count++)
+				System.out.println("Count: " + count + "  Value: " + nalu_list.get(count).toString());
+		}
 		return nalu_list.size();
 	}
 	

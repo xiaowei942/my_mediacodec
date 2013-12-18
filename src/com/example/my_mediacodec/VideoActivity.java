@@ -32,6 +32,7 @@ public class VideoActivity extends Activity implements SurfaceHolder.Callback{
 	private static final String PATH = "/sdcard/test.h264";
 
 	private static final boolean VERBOSE = true;
+	private static final boolean OUTPUTBUFFERS = false;
 
 	private static final long TIMEOUT_USEC = 10000;
 	private static final boolean DEBUG_SAVE_FILE = true;
@@ -131,6 +132,7 @@ public class VideoActivity extends Activity implements SurfaceHolder.Callback{
     	setParameters(320, 240);
     	
 		long rawSize = 0;
+		int decodedframes = 0;
 		
 		// Save a copy to disk.  Useful for debugging the test.  Note this is a raw elementary
 		// stream, not a .mp4 file, so not all players will know what to do with it.
@@ -151,105 +153,156 @@ public class VideoActivity extends Activity implements SurfaceHolder.Callback{
     	ByteBuffer[] decoderInputBuffers = null;
     	ByteBuffer[] decoderOutputBuffers = null;
     	
+    	boolean decoderconfigured = false;
     	MediaFormat decoderOutputFormat = null;
     	MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
     	
     	MediaCodec decoder = MediaCodec.createDecoderByType(MIME_TYPE);
-    	MediaFormat format = MediaFormat.createVideoFormat(MIME_TYPE, mWidth, mHeight);
-    	decoder.configure(format, null, null, 0);
-        decoder.start();
-        decoderInputBuffers = decoder.getInputBuffers();
-        decoderOutputBuffers = decoder.getOutputBuffers();
-        int count = 3;
-        int cur = 2;
+        
+        //Merge SPS and PPS to one buffer by set index
+        int count = 2;
+        int cur = 0;
         
         // Loop until the output side is done.
         boolean inputDone = false;
         boolean encoderDone = false;
         boolean outputDone = false;
         
-        while(true) {
+        while(!outputDone) {
         	if(!inputDone) {
         		int size = 0; 
-	    		int inputBufferIndex = decoder.dequeueInputBuffer(-1);
+	    		int inputBufferIndex = 0;
 	    		
 	        	if(count<nalu_list.size()) {
-		        	size = nalu_list.get(count)-nalu_list.get(cur);
-		        	int offset = nalu_list.get(cur);
-		        	ByteBuffer bf = ByteBuffer.wrap(bytes, offset, size);
-		        	
-		        	bf.position(0);
-		        	bf.limit(size);
-		        	
-		        	byte []temp = new byte[1024];
-		        	bf.get(temp, 0, size);		  
-		        	System.out.println("Encoded buffer: " + count);
-		        	System.out.println("------");
-		        	for(int i=0; i<size; i++)
-		        		System.out.print("0x" + Integer.toHexString(temp[i]) + "  ");
-		        	System.out.println("------");
-		    		
-		        	ByteBuffer inputBuffer = decoderInputBuffers[inputBufferIndex];
-		    		inputBuffer.clear();
-		        	inputBuffer.put(bf);
-		        	if(count == 3) {
-			        	decoder.queueInputBuffer(inputBufferIndex, 0, size, count, 1);
-	        		} else {
-	        			decoder.queueInputBuffer(inputBufferIndex, 0, size, count, 0);
+	        		if(count < 2) {
+	        			count++;
+	        			continue;
+	        		} else if(count == 2) {
+	        			size = nalu_list.get(count)-nalu_list.get(cur);
+			        	int offset = nalu_list.get(cur);
+			        	ByteBuffer bf = ByteBuffer.wrap(bytes, offset, size);
+			        	
+			        	bf.position(0);
+			        	bf.limit(size);
+			        	
+			        	if(OUTPUTBUFFERS) {
+				        	byte []temp = new byte[1024];
+				        	bf.get(temp, 0, size);		  
+				        	System.out.println("Encoded buffer: " + count);
+				        	System.out.println("------");
+				        	for(int i=0; i<size; i++)
+				        		System.out.print("0x" + Integer.toHexString(temp[i]) + "  ");
+				        	System.out.println("\n------");
+			        	}
+			        	MediaFormat format = MediaFormat.createVideoFormat(MIME_TYPE, mWidth, mHeight);
+			        	format.setByteBuffer("csd-0", bf);
+			        	format.setInteger("color-format", 19);
+		            	decoder.configure(format, mSurface, null, 0);
+		                decoder.start();
+		                
+		                decoderconfigured = true;
+		                decoderInputBuffers = decoder.getInputBuffers();
+		                decoderOutputBuffers = decoder.getOutputBuffers();
+		                cur = count;
+		                count++;
+		                continue;
+	        		} else {	        		
+		        		inputBufferIndex = decoder.dequeueInputBuffer(-1);
+			        	size = nalu_list.get(count)-nalu_list.get(cur);
+			        	int offset = nalu_list.get(cur);
+			        	ByteBuffer bf = ByteBuffer.wrap(bytes, offset, size);
+			        	
+			        	bf.position(0);
+			        	bf.limit(size);
+
+			        	if(OUTPUTBUFFERS) {
+			        	byte []temp = new byte[1024];
+				        	bf.get(temp, 0, size);		  
+				        	System.out.println("Encoded buffer: " + count);
+				        	System.out.println("------");
+				        	for(int i=0; i<size; i++)
+				        		System.out.print("0x" + Integer.toHexString(temp[i]) + "  ");
+				        	System.out.println("------");
+			        	}
+			        	
+			        	ByteBuffer inputBuffer = decoderInputBuffers[inputBufferIndex];
+			    		inputBuffer.clear();
+			        	inputBuffer.put(bf);
+			        	if(count == 3) {
+				        	decoder.queueInputBuffer(inputBufferIndex, 0, size, count*1000, 0);
+				        	if (VERBOSE) Log.d(TAG, "passed " + size + " bytes to decoder" + " with flags - " + 0);
+		        		} else {
+		        			decoder.queueInputBuffer(inputBufferIndex, 0, size, count*1000, 0);
+				        	if (VERBOSE) Log.d(TAG, "passed " + size + " bytes to decoder" + " with flags - " + 0);
+		        		}
+
+			        	cur = count;
+			        	count++;
 	        		}
-		        	
-		        	cur = count;
-		        	count++;
 	        	} else {
 	        		inputDone = true;
-		        	decoder.queueInputBuffer(inputBufferIndex, 0, size, count, MediaCodec.BUFFER_FLAG_END_OF_STREAM);	        		
+	        		inputBufferIndex = decoder.dequeueInputBuffer(-1);
+		        	decoder.queueInputBuffer(inputBufferIndex, 0, size, count*1000, MediaCodec.BUFFER_FLAG_END_OF_STREAM);	
+		        	
+		        	if (VERBOSE) Log.d(TAG, "passed " + size + " bytes to decoder" + " with flags - " + MediaCodec.BUFFER_FLAG_END_OF_STREAM
+                            + (encoderDone ? " (EOS)" : ""));
 	        	}
+	        	
+	        	
         	}
-        	
-        	int decoderStatus = decoder.dequeueOutputBuffer(info, TIMEOUT_USEC);
-            if (decoderStatus == MediaCodec.INFO_TRY_AGAIN_LATER) {
-                // no output available yet
-                if (VERBOSE) 
-                	Log.d(TAG, "no output from decoder available");
-            } else if (decoderStatus == MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED) {
-                // The storage associated with the direct ByteBuffer may already be unmapped,
-                // so attempting to access data through the old output buffer array could
-                // lead to a native crash.
-                if (VERBOSE) 
-                	Log.d(TAG, "decoder output buffers changed");
-                decoderOutputBuffers = decoder.getOutputBuffers();
-            } else if (decoderStatus == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                // this happens before the first frame is returned
-                decoderOutputFormat = decoder.getOutputFormat();
-                if (VERBOSE) 
-                	Log.d(TAG, "decoder output format changed: " + decoderOutputFormat);
-            } else if (decoderStatus < 0) {
-                //fail("unexpected result from deocder.dequeueOutputBuffer: " + decoderStatus);
-            } else {  // decoderStatus >= 0
-                ByteBuffer outputFrame = decoderOutputBuffers[decoderStatus];
-
-                outputFrame.position(info.offset);
-                outputFrame.limit(info.offset + info.size);
-                rawSize += info.size;
-                
-                if (outputStream_out != null) {
-                    byte[] data = new byte[info.size];
-                    outputFrame.get(data);
-                    outputFrame.position(info.offset);
-                    try {
-                        outputStream_out.write(data);
-                    } catch (IOException ioe) {
-                        Log.w(TAG, "failed writing debug data to file");
-                        throw new RuntimeException(ioe);
-                    }
-                    Log.w(TAG, "successful writing debug data to file");
-                }
-                
-                if (info.size == 0) {
-                    if (VERBOSE) Log.d(TAG, "got empty frame");     
-                }
-                decoder.releaseOutputBuffer(decoderStatus, false);
-            }
+        	if(decoderconfigured) {
+	        	int decoderStatus = decoder.dequeueOutputBuffer(info, TIMEOUT_USEC);
+	            if (decoderStatus == MediaCodec.INFO_TRY_AGAIN_LATER) {
+	                // no output available yet
+	                if (VERBOSE) 
+	                	Log.d(TAG, "no output from decoder available");
+	            } else if (decoderStatus == MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED) {
+	                // The storage associated with the direct ByteBuffer may already be unmapped,
+	                // so attempting to access data through the old output buffer array could
+	                // lead to a native crash.
+	                if (VERBOSE) 
+	                	Log.d(TAG, "decoder output buffers changed");
+	                decoderOutputBuffers = decoder.getOutputBuffers();
+	            } else if (decoderStatus == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+	                // this happens before the first frame is returned
+	                decoderOutputFormat = decoder.getOutputFormat();
+	                if (VERBOSE) 
+	                	Log.d(TAG, "decoder output format changed: " + decoderOutputFormat);
+	            } else if (decoderStatus < 0) {
+	                //fail("unexpected result from deocder.dequeueOutputBuffer: " + decoderStatus);
+	            } else {  // decoderStatus >= 0
+	                ByteBuffer outputFrame = decoderOutputBuffers[decoderStatus];
+	
+	                outputFrame.position(info.offset);
+	                outputFrame.limit(info.offset + info.size);
+	                rawSize += info.size;
+	                
+	                if (outputStream_out != null) {
+	                    byte[] data = new byte[info.size];
+	                    outputFrame.get(data);
+	                    outputFrame.position(info.offset);
+	                    try {
+	                        outputStream_out.write(data);
+	                    } catch (IOException ioe) {
+	                        Log.w(TAG, "failed writing debug data to file");
+	                        throw new RuntimeException(ioe);
+	                    }
+	                    Log.w(TAG, "successful writing debug data to file");
+	                }
+	                
+	                if (info.size == 0) {
+	                    if (VERBOSE) Log.d(TAG, "got empty frame");
+	                } else {
+	                    if (VERBOSE) Log.d(TAG, "decoded, checking frame " + decodedframes++);
+	                }
+	
+	                if ((info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+	                    if (VERBOSE) Log.d(TAG, "output EOS");
+	                    outputDone = true;
+	                }
+	                decoder.releaseOutputBuffer(decoderStatus, true /*render*/);
+	            }
+        	}
         }
     }
 }
