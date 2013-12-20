@@ -107,7 +107,7 @@ public class DataExtractor implements Runnable{
 	public static byte[] getBytes() {
 		return bytes;
 	}
-	
+
 	@Override
 	public void run() {
 		// TODO Auto-generated method stub
